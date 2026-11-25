@@ -1,0 +1,13 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Pull, build, restart
+        run: bash /home/ec2-user/deploy.sh
