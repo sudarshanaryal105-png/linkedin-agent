@@ -32,6 +32,21 @@ separate, deterministic code path (`POST /api/linkedin/publish`) that:
 There is no code path — prompt injection included — that lets model output reach the LinkedIn API
 directly.
 
+## Two separate LinkedIn connections — don't confuse them
+
+1. **"Continue with LinkedIn" on the login page** — Supabase's built-in `linkedin_oidc` social
+   login provider. Identity only (`openid profile email`). Lets you sign into *this app* using your
+   LinkedIn account instead of an email/password. Supabase owns this token; the backend never sees
+   it.
+2. **"Connect LinkedIn" after you're signed in** — our own OAuth flow (`GET /api/linkedin/connect`
+   → `GET /api/linkedin/callback`), requesting `w_member_social` so the backend can actually post on
+   your behalf. This is the one stored (encrypted) in `oauth_tokens` and refreshed before publishing.
+
+Using (1) does not satisfy (2) — you'll still see the amber "connect your LinkedIn account" banner
+until you do the second one, even if you just logged in with LinkedIn. That's intentional: logging
+in and granting posting permission are different levels of trust, so they're kept as two explicit
+steps rather than silently bundled.
+
 ## Architecture
 
 | Layer | Choice | Why |
@@ -122,8 +137,13 @@ needed for this product: we already have the post's URN from the publish respons
 3. Settings tab → verify the app↔Page link (you approve it yourself as the page admin).
 4. Products tab → add **"Sign In with LinkedIn using OpenID Connect"** and **"Share on
    LinkedIn"** — both activate instantly.
-5. Auth tab → add redirect URL `http://localhost:8000/api/linkedin/callback`, then copy the
-   **Client ID** and **Client Secret**.
+5. Auth tab → add **both** redirect URLs (one for our backend's posting-permission flow, one for
+   Supabase's login flow — see step 2.6 below):
+   ```
+   http://localhost:8000/api/linkedin/callback
+   https://<your-supabase-project-ref>.supabase.co/auth/v1/callback
+   ```
+   Then copy the **Client ID** and **Client Secret**.
 
 ### 2. Supabase
 
@@ -133,6 +153,12 @@ needed for this product: we already have the post's URN from the publish respons
    string.
 4. Storage → create a bucket named `post-images`, set to **public**.
 5. SQL Editor → paste and run `backend/migrations/001_init.sql`.
+6. Authentication → Providers → **LinkedIn (OIDC)** → enable it, paste the same Client ID/Secret
+   from step 1 → save. This is what powers the "Continue with LinkedIn" button on the login page —
+   it's a separate thing from the backend's own LinkedIn OAuth flow below: this one just signs you
+   into the *app* via your LinkedIn identity; it does **not** grant posting permission. You'll still
+   do the **Connect LinkedIn** step once logged in before you can publish, even if you logged in
+   with LinkedIn.
 
 ### 3. Anthropic
 
